@@ -29,9 +29,8 @@ DURATION = int(os.getenv('DURATION', 1))
 
 # Pares a analizar - REDUCIDOS para pruebas
 SYMBOLS = [
-    'EURUSD-OTC',
-    'EURJPY-OTC',
-    'GBPUSD-OTC'
+ 'EURJPY-OTC', 'EURUSD-OTC', 'AUDCAD-OTC', 
+    'GBPUSD-OTC', 'EURGBP-OTC', 'GBPJPY-OTC', 'USDCHF-OTC'
 ]
 
 TIMEFRAME = int(os.getenv('TIMEFRAME', 60))
@@ -463,3 +462,4 @@ if __name__ == "__main__":
     # Modo local: también ejecutar directamente
     bot = TradingBot()
     bot.run()
+
