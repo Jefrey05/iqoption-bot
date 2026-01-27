@@ -1,1 +1,2 @@
-web: python iqoption-bot.py
+web: python web_server.py
+worker: python iqoption-bot.py
