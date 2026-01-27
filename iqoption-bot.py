@@ -38,7 +38,7 @@ SYMBOLS = [
 
 TIMEFRAME = 60
 CANDLE_COUNT = 200
-SCAN_INTERVAL = 10
+SCAN_INTERVAL = 60
 
 def log_print(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
@@ -161,3 +161,4 @@ class TradingBot:
 if __name__ == "__main__":
     bot = TradingBot()
     bot.run()
+
