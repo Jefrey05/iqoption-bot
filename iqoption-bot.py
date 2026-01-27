@@ -1,5 +1,3 @@
-
-
 from iqoptionapi.stable_api import IQ_Option
 import time
 import pandas as pd
@@ -232,12 +230,19 @@ class TradingBot:
         
         try:
             while True:
+                # Verificar conexión y reconectar si es necesario
+                if not self.IQ.check_connect():
+                    print("⚠️ Conexión perdida. Intentando reconectar...")
+                    if not self.connect_iqoption():
+                        print("❌ Reconexión fallida. Reintentando en 10s...")
+                        time.sleep(10)
+                        continue
+
                 print(f"🔎 Escaneando {len(SYMBOLS)} pares... ({datetime.now().strftime('%H:%M:%S')})")
                 for pair in SYMBOLS:
                     try:
                         analysis = self.analyze_pair(pair)
                         if not analysis:
-                            print(f"   ⚠️ {pair}: Sin datos")
                             continue
 
                         signal = self.check_signal(analysis)
@@ -262,15 +267,9 @@ class TradingBot:
                                 msg_closed = f"⚠️ *SEÑAL NO OPERADA*\n*Par:* {pair}\n*Motivo:* Mercado cerrado."
                                 self.send_telegram_alert(msg_closed)
                                 print(f"   ❌ Operación cancelada en {pair} (Mercado cerrado)")
-                        else:
-                            # Opcional: ver progreso por par
-                            # print(f"   ✅ {pair}: Analizado (sin señal)")
-                            pass
-
                     except Exception as e:
                         print(f"Error en {pair}: {str(e)}")
                 
-                print(f"⏳ Esperando {SCAN_INTERVAL} segundos para el siguiente escaneo...")
                 time.sleep(SCAN_INTERVAL)
         except KeyboardInterrupt:
             print("\n🛑 Detenido")
