@@ -1,1 +1,1 @@
-worker: python -u iqoption-bot.py
+web: python iqoption-bot.py
