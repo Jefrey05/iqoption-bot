@@ -9,11 +9,16 @@ import threading
 import logging
 import sys
 
-# Silenciar logs internos
+# ==============================================
+# LIMPIEZA TOTAL DE LOGS (Elimina el ruido rojo)
+# ==============================================
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+logging.basicConfig(level=logging.CRITICAL)
 logging.getLogger('iqoptionapi').setLevel(logging.CRITICAL)
 
 # ==============================================
-# CONFIGURACIÓN (RAILWAY ENV)
+# CONFIGURACIÓN
 # ==============================================
 EMAIL_IQ = os.getenv("EMAIL_IQ")
 PASSWORD_IQ = os.getenv("PASSWORD_IQ")
@@ -36,57 +41,53 @@ CANDLE_COUNT = 200
 SCAN_INTERVAL = 10
 
 def log_print(msg):
-    """Imprime mensajes forzando la salida inmediata para Railway"""
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
-    sys.stdout.flush()
 
 class TradingBot:
     def __init__(self):
         self.IQ = None
         self.last_signals = {}
+        self.error_count = 0
 
     def connect_iqoption(self):
+        """Conexión limpia"""
         try:
-            log_print(f"🔄 Conectando a IQ Option ({ACCOUNT_TYPE})...")
-            if self.IQ:
-                try: self.IQ.logout()
-                except: pass
-            
+            log_print(f"🔄 Intentando conexión ({ACCOUNT_TYPE})...")
             self.IQ = IQ_Option(EMAIL_IQ, PASSWORD_IQ)
             connected = self.IQ.connect()
             
-            if connected:
-                time.sleep(5) # Espera de estabilización
-                if self.IQ.check_connect():
-                    log_print(f"✅ Conexión validada con éxito.")
-                    self.IQ.change_balance(ACCOUNT_TYPE)
-                    return True
+            if connected and self.IQ.check_connect():
+                log_print(f"✅ CONECTADO.")
+                self.IQ.change_balance(ACCOUNT_TYPE)
+                self.error_count = 0
+                return True
             
-            log_print("❌ Error de conexión inicial.")
             return False
-        except Exception as e:
-            log_print(f"❌ Error crítico: {str(e)}")
+        except:
             return False
 
-    def get_candles_safe(self, pair):
+    def get_candles(self, pair):
         try:
+            # Petición directa a la API
             candles = self.IQ.get_candles(pair, TIMEFRAME, CANDLE_COUNT, time.time())
             if isinstance(candles, list) and len(candles) == CANDLE_COUNT:
+                self.error_count = 0
                 return candles
-        except Exception as e:
-            if "reconnect" in str(e).lower():
-                return "FORCE_RECONNECT"
+        except:
+            pass
+        
+        self.error_count += 1
         return None
 
-    def analyze_pair(self, pair):
-        data = self.get_candles_safe(pair)
-        if data == "FORCE_RECONNECT": return "RECONNECT"
-        if not data: return None
+    def analyze_and_trade(self, pair):
+        candles = self.get_candles(pair)
+        if not candles: return
 
-        df = pd.DataFrame(data)
+        df = pd.DataFrame(candles)
         for col in ['open', 'close', 'max', 'min']: df[col] = df[col].astype(float)
         df.rename(columns={'max': 'high', 'min': 'low'}, inplace=True)
 
+        # Indicadores básicos
         df['RSI'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
         bb = ta.volatility.BollingerBands(df['close'], window=14, window_dev=2)
         df['BB_high'] = bb.bollinger_hband()
@@ -104,89 +105,58 @@ class TradingBot:
                 else: break
             return count
 
-        is_green = df['close'] > df['open']
-        is_red = df['close'] < df['open']
         last = df.iloc[-1]
-
-        return {
-            'pair': pair, 'price': last['close'], 'rsi': last['RSI'],
-            'bb_high': last['BB_high'], 'bb_low': last['BB_low'],
-            'ema50': last['EMA50'], 'body': last['body'],
-            'upper_wick': last['upper_wick'], 'lower_wick': last['lower_wick'],
-            'avg_body': last['avg_body_10'], 
-            'consecutive_green': count_consecutive(is_green),
-            'consecutive_red': count_consecutive(is_red)
-        }
-
-    def send_telegram_alert(self, message):
-        try:
-            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-            payload = {'chat_id': TELEGRAM_CHAT_ID, 'text': message, 'parse_mode': 'Markdown'}
-            requests.post(url, data=payload, timeout=10)
-        except: pass
-
-    def execute_trade(self, pair, action):
-        try:
-            log_print(f"🚀 SEÑAL {action} en {pair} - Operando...")
-            self.IQ.buy(INVESTMENT, pair, action.lower(), DURATION)
-        except: pass
-
-    def check_signal(self, data):
-        if not data: return None
         signal = None
-        price, rsi, ema = data['price'], data['rsi'], data['ema50']
-        bb_high, bb_low = data['bb_high'], data['bb_low']
-        body, avg_body = data['body'], data['avg_body']
 
-        if price > ema:
-            if data['consecutive_green'] >= 4 and rsi > 70 and price >= bb_high:
-                if data['upper_wick'] > (body * 0.35) and avg_body <= body <= (avg_body * 2):
+        if last['close'] > last['EMA50']:
+            if count_consecutive(df['close'] > df['open']) >= 4 and last['RSI'] > 70 and last['close'] >= last['BB_high']:
+                if last['upper_wick'] > (last['body'] * 0.35):
                     signal = "PUT"
-        elif price < ema:
-            if data['consecutive_red'] >= 4 and rsi < 30 and price <= bb_low:
-                if data['lower_wick'] > (body * 0.35) and avg_body <= body <= (avg_body * 2):
+        elif last['close'] < last['EMA50']:
+            if count_consecutive(df['close'] < df['open']) >= 4 and last['RSI'] < 30 and last['close'] <= last['BB_low']:
+                if last['lower_wick'] > (last['body'] * 0.35):
                     signal = "CALL"
 
-        if not signal: return None
-        signal_key = f"{data['pair']}_{signal}"
-        if signal_key in self.last_signals and (time.time() - self.last_signals[signal_key]) < 600: return None
-        self.last_signals[signal_key] = time.time()
-        return signal
+        if signal:
+            signal_key = f"{pair}_{signal}"
+            if signal_key not in self.last_signals or (time.time() - self.last_signals[signal_key]) > 600:
+                self.last_signals[signal_key] = time.time()
+                log_print(f"� SEÑAL {signal} en {pair}. Operando...")
+                self.IQ.buy(INVESTMENT, pair, signal.lower(), DURATION)
+                self.send_telegram(f"🚨 *ALERTA:* {signal} en {pair}\nInversión: ${INVESTMENT}")
+
+    def send_telegram(self, msg):
+        try:
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+            requests.post(url, data={'chat_id': TELEGRAM_CHAT_ID, 'text': msg, 'parse_mode': 'Markdown'}, timeout=5)
+        except: pass
 
     def run(self):
-        while not self.connect_iqoption():
-            log_print("⏳ Reintentando conexión inicial en 30s...")
+        if not self.connect_iqoption():
+            log_print("❌ Error de inicio. Railway reiniciará en 30s...")
             time.sleep(30)
+            sys.exit(1)
 
-        self.send_telegram_alert("🚀 *Bot de Trading Online en Railway*")
-        log_print("🔍 Iniciando bucle de escaneo...")
+        self.send_telegram("🚀 *Bot de Trading Iniciado en Railway*")
         
         while True:
             try:
                 if not self.IQ.check_connect():
-                    log_print("⚠️ Conexión perdida. Reiniciando sesión...")
-                    self.connect_iqoption()
-                    continue
+                    log_print("⚠️ Conexión perdida. Reiniciando proceso...")
+                    sys.exit(1)
+
+                if self.error_count > 5:
+                    log_print("⚠️ Demasiados errores de datos. Reiniciando proceso...")
+                    sys.exit(1)
 
                 log_print(f"🔎 Escaneando {len(SYMBOLS)} pares...")
                 for pair in SYMBOLS:
-                    res = self.analyze_pair(pair)
-                    if res == "RECONNECT":
-                        log_print(f"🔄 Forzando reinicio por error en {pair}")
-                        self.connect_iqoption()
-                        break
-                    
-                    if not res: continue
-
-                    signal = self.check_signal(res)
-                    if signal:
-                        self.send_telegram_alert(f"🚨 *ALERTA:* Detectada señal de {signal} en {pair}. Operando...")
-                        self.execute_trade(pair, signal)
+                    self.analyze_and_trade(pair)
                 
                 time.sleep(SCAN_INTERVAL)
             except Exception as e:
-                log_print(f"⚠️ Error en bucle: {str(e)}")
-                time.sleep(10)
+                log_print(f"💥 Error inesperado: {str(e)}")
+                sys.exit(1)
 
 if __name__ == "__main__":
     bot = TradingBot()
