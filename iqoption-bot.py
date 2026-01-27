@@ -32,8 +32,7 @@ SYMBOLS = [
     'EURJPY-OTC', 'EURUSD-OTC', 'AUDCAD-OTC', 
     'GBPUSD-OTC', 'EURGBP-OTC', 'GBPJPY-OTC', 'USDCHF-OTC', 
     'USDHKD-OTC',
-    'USDINR-OTC',
-    'USDZAR-OTC',
+
 ]
 
 TIMEFRAME = int(os.getenv('TIMEFRAME', 60))
@@ -465,6 +464,7 @@ if __name__ == "__main__":
     # Modo local: también ejecutar directamente
     bot = TradingBot()
     bot.run()
+
 
 
 
