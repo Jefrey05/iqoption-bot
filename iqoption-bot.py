@@ -33,7 +33,6 @@ SYMBOLS = [
     'GBPUSD-OTC', 'EURGBP-OTC', 'GBPJPY-OTC', 'USDCHF-OTC', 
     'USDHKD-OTC',
     'USDINR-OTC',
-    'USDSGD-OTC',
     'USDZAR-OTC',
 ]
 
@@ -466,5 +465,6 @@ if __name__ == "__main__":
     # Modo local: también ejecutar directamente
     bot = TradingBot()
     bot.run()
+
 
 
