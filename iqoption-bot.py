@@ -7,8 +7,9 @@ from datetime import datetime
 import os
 import threading
 import logging
+import sys
 
-# Silenciar logs ruidosos de la librería
+# Silenciar logs internos
 logging.getLogger('iqoptionapi').setLevel(logging.CRITICAL)
 
 # ==============================================
@@ -34,15 +35,19 @@ TIMEFRAME = 60
 CANDLE_COUNT = 200
 SCAN_INTERVAL = 10
 
+def log_print(msg):
+    """Imprime mensajes forzando la salida inmediata para Railway"""
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+    sys.stdout.flush()
+
 class TradingBot:
     def __init__(self):
         self.IQ = None
         self.last_signals = {}
 
     def connect_iqoption(self):
-        """Conexión con validación forzada"""
         try:
-            print(f"🔄 Conectando a IQ Option ({ACCOUNT_TYPE})...", flush=True)
+            log_print(f"🔄 Conectando a IQ Option ({ACCOUNT_TYPE})...")
             if self.IQ:
                 try: self.IQ.logout()
                 except: pass
@@ -51,16 +56,16 @@ class TradingBot:
             connected = self.IQ.connect()
             
             if connected:
-                time.sleep(5)
+                time.sleep(5) # Espera de estabilización
                 if self.IQ.check_connect():
-                    print(f"✅ Conexión validada con éxito.", flush=True)
+                    log_print(f"✅ Conexión validada con éxito.")
                     self.IQ.change_balance(ACCOUNT_TYPE)
                     return True
             
-            print("❌ Error de conexión. Verificando credenciales...", flush=True)
+            log_print("❌ Error de conexión inicial.")
             return False
         except Exception as e:
-            print(f"❌ Error crítico: {str(e)}", flush=True)
+            log_print(f"❌ Error crítico: {str(e)}")
             return False
 
     def get_candles_safe(self, pair):
@@ -122,7 +127,7 @@ class TradingBot:
 
     def execute_trade(self, pair, action):
         try:
-            print(f"🚀 Operando {action} en {pair}...", flush=True)
+            log_print(f"🚀 SEÑAL {action} en {pair} - Operando...")
             self.IQ.buy(INVESTMENT, pair, action.lower(), DURATION)
         except: pass
 
@@ -150,34 +155,37 @@ class TradingBot:
 
     def run(self):
         while not self.connect_iqoption():
-            print("⏳ Reintentando conexión inicial en 30s...", flush=True)
+            log_print("⏳ Reintentando conexión inicial en 30s...")
             time.sleep(30)
 
         self.send_telegram_alert("🚀 *Bot de Trading Online en Railway*")
+        log_print("🔍 Iniciando bucle de escaneo...")
         
         while True:
             try:
                 if not self.IQ.check_connect():
-                    print("⚠️ Reconectando...", flush=True)
+                    log_print("⚠️ Conexión perdida. Reiniciando sesión...")
                     self.connect_iqoption()
                     continue
 
-                print(f"🔎 Escaneando... ({datetime.now().strftime('%H:%M:%S')})", flush=True)
+                log_print(f"🔎 Escaneando {len(SYMBOLS)} pares...")
                 for pair in SYMBOLS:
                     res = self.analyze_pair(pair)
                     if res == "RECONNECT":
+                        log_print(f"🔄 Forzando reinicio por error en {pair}")
                         self.connect_iqoption()
                         break
+                    
                     if not res: continue
 
                     signal = self.check_signal(res)
                     if signal:
+                        self.send_telegram_alert(f"🚨 *ALERTA:* Detectada señal de {signal} en {pair}. Operando...")
                         self.execute_trade(pair, signal)
-                        self.send_telegram_alert(f"🚨 *ALERTA:* {signal} en {pair}")
                 
                 time.sleep(SCAN_INTERVAL)
             except Exception as e:
-                print(f"⚠️ Error: {str(e)}", flush=True)
+                log_print(f"⚠️ Error en bucle: {str(e)}")
                 time.sleep(10)
 
 if __name__ == "__main__":
