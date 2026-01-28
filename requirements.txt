@@ -2,4 +2,5 @@ Flask==3.0.0
 pandas==2.1.4
 ta==0.10.2
 requests==2.31.0
+pytz==2023.3
 iqoptionapi @ git+https://github.com/Lu-Yi-Hsun/iqoptionapi.git
