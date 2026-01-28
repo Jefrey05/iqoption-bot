@@ -1,53 +1,44 @@
 """
-Servidor web simple para mantener activa la aplicación en Railway.
+Servidor web mejorado para nube
 """
 from flask import Flask, jsonify
 import os
 import time
 import logging
-from datetime import datetime
-
-# Configurar logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-
-# Estado del servidor
-server_start_time = time.time()
+start_time = time.time()
 
 @app.route('/')
 def home():
-    """Página principal"""
     return jsonify({
-        "service": "IQ Option Trading Bot - Web Server",
         "status": "online",
-        "timestamp": datetime.now().isoformat(),
-        "uptime_seconds": int(time.time() - server_start_time),
-        "endpoints": ["/ping", "/health", "/"]
+        "service": "IQ Option Cloud Bot",
+        "uptime": int(time.time() - start_time),
+        "timestamp": time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime()),
+        "environment": "cloud" if os.environ.get('RAILWAY_ENVIRONMENT') else "local"
     })
 
 @app.route('/ping')
 def ping():
-    """Endpoint para keep-alive"""
-    logger.info(f"📡 Ping recibido: {datetime.now().isoformat()}")
-    return jsonify({
-        "status": "pong",
-        "timestamp": datetime.now().isoformat()
-    })
+    return jsonify({"status": "pong", "timestamp": time.time()})
 
-@app.route('/health')
-def health():
-    """Health check endpoint"""
-    return jsonify({
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat()
-    })
+@app.route('/debug')
+def debug():
+    """Endpoint de debug para ver variables"""
+    debug_info = {
+        "cloud": os.environ.get('RAILWAY_ENVIRONMENT') is not None,
+        "port": os.environ.get('PORT'),
+        "email_set": bool(os.environ.get('EMAIL_IQ')),
+        "telegram_set": bool(os.environ.get('TELEGRAM_TOKEN')),
+        "variables": {k: "***" if "PASS" in k or "KEY" in k else "Set" 
+                     for k in os.environ if 'IQ' in k or 'TELEGRAM' in k or 'WHATSAPP' in k}
+    }
+    return jsonify(debug_info)
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    logger.info(f"🚀 Servidor web iniciado en puerto {port}")
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    logger.info(f"🌐 Servidor web cloud en puerto {port}")
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
