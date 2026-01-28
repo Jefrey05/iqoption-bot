@@ -37,7 +37,7 @@ SYMBOLS = [
 
 TIMEFRAME = 60  # Velas de 1 minuto
 CANDLE_COUNT = 200
-SCAN_INTERVAL = 10
+SCAN_INTERVAL = 60
 
 # ==============================================
 # CLASE PRINCIPAL DEL BOT
@@ -280,3 +280,4 @@ class TradingBot:
 if __name__ == "__main__":
     bot = TradingBot()
     bot.run()
+
