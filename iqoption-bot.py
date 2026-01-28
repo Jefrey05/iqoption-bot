@@ -35,7 +35,7 @@ SYMBOLS = [
 ]
 
 TIMEFRAME = int(os.getenv('TIMEFRAME', 60))
-CANDLE_COUNT = int(os.getenv('CANDLE_COUNT', 100))  # REDUCIDO
+CANDLE_COUNT = int(os.getenv('CANDLE_COUNT', 200))  # REDUCIDO
 SCAN_INTERVAL = int(os.getenv('SCAN_INTERVAL', 30))  # AUMENTADO a 30s
 
 # Configuración de reconexión MEJORADA
@@ -463,6 +463,7 @@ if __name__ == "__main__":
     # Modo local: también ejecutar directamente
     bot = TradingBot()
     bot.run()
+
 
 
 
